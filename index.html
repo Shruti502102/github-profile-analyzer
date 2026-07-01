@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>octoscan — GitHub Profile Analyzer</title>
+<style>
+  :root{
+    --bg:#040611;
+    --panel:rgba(16,22,40,0.55);
+    --panel-2:rgba(22,28,50,0.6);
+    --border:rgba(0,255,214,0.18);
+    --text:#E4F7FF;
+    --dim:#7C8AB5;
+    --accent:#00FFD6;
+    --accent-dim:rgba(0,255,214,0.18);
+    --accent2:#B14CFF;
+    --warn:#FFC93C;
+    --danger:#FF4D6D;
+    --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font-mono);
+    min-height:100vh;
+    position:relative;
+    overflow-x:hidden;
+  }
+  body::before{
+    content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(560px circle at 12% 12%, rgba(0,255,214,0.14), transparent 60%),
+      radial-gradient(520px circle at 88% 20%, rgba(177,76,255,0.13), transparent 60%),
+      radial-gradient(640px circle at 50% 95%, rgba(0,180,255,0.10), transparent 60%),
+      var(--bg);
+    animation:driftGlow 20s ease-in-out infinite alternate;
+  }
+  body::after{
+    content:''; position:fixed; inset:0; z-index:0; pointer-events:none; opacity:0.3;
+    background-image:
+      linear-gradient(rgba(0,255,214,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,214,0.05) 1px, transparent 1px);
+    background-size:38px 38px;
+    mask-image:radial-gradient(circle at 50% 20%, black, transparent 75%);
+    animation:gridDrift 36s linear infinite;
+  }
+  @keyframes driftGlow{
+    0%{background-position:0% 0%, 100% 0%, 50% 100%, 0 0;}
+    100%{background-position:10% 8%, 90% 12%, 44% 90%, 0 0;}
+  }
+  @keyframes gridDrift{ from{background-position:0 0, 0 0;} to{background-position:110px 70px, 110px 70px;} }
+
+  .wrap{max-width:920px; margin:0 auto; padding:36px 20px 80px; position:relative; z-index:1;}
+  .prompt-line{color:var(--accent2); font-size:13px; margin-bottom:4px;}
+  h1{
+    font-size:24px; margin:0 0 4px; letter-spacing:0.5px; color:var(--text);
+    text-shadow:0 0 14px var(--accent-dim), 0 0 30px rgba(0,255,214,0.2);
+    animation:pulseGlow 3.4s ease-in-out infinite;
+  }
+  @keyframes pulseGlow{
+    0%,100%{text-shadow:0 0 12px var(--accent-dim), 0 0 26px rgba(0,255,214,0.18);}
+    50%{text-shadow:0 0 18px var(--accent-dim), 0 0 40px rgba(0,255,214,0.36);}
+  }
+  h1 .cursor{color:var(--accent); animation:blink 1.1s step-end infinite;}
+  @keyframes blink{50%{opacity:0;}}
+  .sub{color:var(--dim); font-size:12.5px; margin-bottom:28px;}
+
+  .search-row{display:flex; gap:10px; margin-bottom:8px;}
+  .search-row input{
+    flex:1;
+    background:rgba(6,9,20,0.6);
+    backdrop-filter:blur(10px);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:13px 14px;
+    font-family:var(--font-mono);
+    font-size:14px;
+    border-radius:8px;
+    transition:border-color 0.2s, box-shadow 0.2s;
+  }
+  .search-row input::placeholder{color:var(--dim);}
+  .search-row input:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim);}
+  .search-row button{
+    background:linear-gradient(135deg, var(--accent), var(--accent2));
+    color:#03150F;
+    border:none;
+    padding:0 24px;
+    font-family:var(--font-mono);
+    font-weight:700;
+    font-size:13px;
+    letter-spacing:1px;
+    cursor:pointer;
+    border-radius:8px;
+    position:relative; overflow:hidden;
+    box-shadow:0 0 18px var(--accent-dim);
+    transition:box-shadow 0.2s, transform 0.12s;
+  }
+  .search-row button::before{
+    content:''; position:absolute; top:0; left:-60%; width:40%; height:100%;
+    background:linear-gradient(120deg, transparent, rgba(255,255,255,0.45), transparent);
+    transform:skewX(-20deg); animation:shimmer 2.6s ease-in-out infinite;
+  }
+  @keyframes shimmer{0%{left:-60%;} 100%{left:130%;}}
+  .search-row button:hover{box-shadow:0 0 28px var(--accent-dim), 0 0 10px var(--accent2);}
+  .search-row button:active{transform:scale(0.96);}
+  .hint{color:var(--dim); font-size:11.5px; margin-bottom:30px;}
+
+  .status{color:var(--warn); font-size:13px; margin:12px 0; display:flex; align-items:center; gap:10px;}
+  .status.error{color:var(--danger);}
+  .status.loading::before{
+    content:''; width:12px; height:12px; border-radius:50%;
+    border:2px solid var(--accent-dim); border-top-color:var(--accent);
+    animation:spin 0.7s linear infinite; flex-shrink:0;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .profile-card{
+    display:none;
+    background:var(--panel);
+    backdrop-filter:blur(18px);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:26px;
+    margin-bottom:20px;
+    box-shadow:0 10px 40px rgba(0,0,0,0.4);
+    animation:cardIn 0.5s cubic-bezier(0.16,1,0.3,1) both;
+  }
+  @keyframes cardIn{
+    from{opacity:0; transform:translateY(16px) scale(0.98);}
+    to{opacity:1; transform:translateY(0) scale(1);}
+  }
+  .profile-top{display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;}
+  .avatar{
+    width:88px; height:88px; border:2px solid var(--accent); border-radius:12px; flex-shrink:0;
+    box-shadow:0 0 20px var(--accent-dim);
+    background:var(--panel-2);
+    object-fit:cover;
+  }
+  .who h2{margin:0 0 2px; font-size:20px; color:var(--text);}
+  .who .login{color:var(--accent); font-size:13px;}
+  .bio{color:var(--dim); font-size:13px; margin-top:10px; max-width:520px; line-height:1.5;}
+  .meta-row{display:flex; gap:16px; flex-wrap:wrap; margin-top:14px; font-size:12px; color:var(--dim);}
+  .meta-row span{color:var(--text);}
+
+  .stat-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:10px;
+    margin-top:22px;
+  }
+  @media(max-width:600px){.stat-grid{grid-template-columns:repeat(2,1fr);}}
+  .stat{
+    background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center;
+    transition:transform 0.2s, box-shadow 0.2s;
+  }
+  .stat:hover{transform:translateY(-3px); box-shadow:0 8px 20px var(--accent-dim);}
+  .stat .n{font-size:24px; font-weight:700; color:var(--accent); text-shadow:0 0 12px var(--accent-dim);}
+  .stat .l{font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--dim); margin-top:4px;}
+
+  .section-head{
+    font-size:12px; letter-spacing:2px; text-transform:uppercase; color:var(--dim);
+    margin:28px 0 12px; display:flex; justify-content:space-between; align-items:center;
+  }
+  .repo-list{display:grid; gap:8px;}
+  .repo{
+    background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:14px 18px; display:grid;
+    grid-template-columns:1fr auto; gap:8px; align-items:center;
+    transition:transform 0.15s, border-color 0.2s, box-shadow 0.2s;
+    animation:fadeInUp 0.4s ease both;
+  }
+  .repo:hover{transform:translateX(4px); border-color:var(--accent); box-shadow:0 4px 16px var(--accent-dim);}
+  .repo a{color:var(--text); font-weight:700; font-size:13.5px; text-decoration:none;}
+  .repo a:hover{color:var(--accent);}
+  .repo .desc{color:var(--dim); font-size:12px; margin-top:3px; max-width:520px;}
+  .repo .stats{display:flex; gap:14px; font-size:12px; color:var(--dim); white-space:nowrap;}
+  .lang-dot{width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:5px; background:var(--accent); box-shadow:0 0 6px var(--accent);}
+
+  .lang-bars{padding:4px 0;}
+  .lang-row{display:grid; grid-template-columns:120px 1fr 50px; align-items:center; gap:10px; margin-bottom:8px; font-size:12px; animation:fadeInUp 0.4s ease both;}
+  .lang-track{background:rgba(255,255,255,0.05); height:6px; border:1px solid var(--border); border-radius:6px; overflow:hidden;}
+  .lang-fill{height:100%; width:0; background:linear-gradient(90deg, var(--accent), var(--accent2)); box-shadow:0 0 8px var(--accent-dim); transition:width 0.7s cubic-bezier(0.16,1,0.3,1);}
+
+  @keyframes fadeInUp{ from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+  @keyframes shake{
+    10%,90%{transform:translateX(-1px);} 20%,80%{transform:translateX(2px);}
+    30%,50%,70%{transform:translateX(-4px);} 40%,60%{transform:translateX(4px);}
+  }
+  .shake-input{animation:shake 0.4s;}
+
+  ::-webkit-scrollbar{width:8px; height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border); border-radius:8px;}
+  ::-webkit-scrollbar-thumb:hover{background:var(--accent);}
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="prompt-line">$ octoscan --user</div>
+  <h1>GitHub Profile Analyzer<span class="cursor">_</span></h1>
+  <div class="sub">Look up any public GitHub username to pull profile stats and top repositories.</div>
+
+  <div class="search-row">
+    <input id="username" type="text" placeholder="e.g. torvalds" autocomplete="off">
+    <button id="searchBtn">ANALYZE</button>
+  </div>
+  <div class="hint">Uses the public GitHub REST API (no auth) — rate limited to ~60 requests/hour per IP.</div>
+
+  <div id="status"></div>
+
+  <div class="profile-card" id="profileCard">
+    <div class="profile-top">
+      <img class="avatar" id="avatar" src="" alt="avatar">
+      <div class="who">
+        <h2 id="name"></h2>
+        <div class="login" id="login"></div>
+        <div class="bio" id="bio"></div>
+        <div class="meta-row" id="metaRow"></div>
+      </div>
+    </div>
+
+    <div class="stat-grid" id="statGrid"></div>
+
+    <div class="section-head">Top Repositories (by stars)</div>
+    <div class="repo-list" id="repoList"></div>
+
+    <div class="section-head">Language Breakdown (top repos)</div>
+    <div class="lang-bars" id="langBars"></div>
+  </div>
+</div>
+
+<script>
+  /* =========================================================================
+     GITHUB PROFILE ANALYZER
+     -------------------------------------------------------------------------
+     Fetches data client-side from the public, unauthenticated GitHub REST
+     API (no API key needed). Two endpoints are used per search:
+       GET /users/{username}         -> profile info
+       GET /users/{username}/repos   -> list of public repos
+     Note: unauthenticated requests are rate-limited to ~60/hour per IP.
+     ========================================================================= */
+  const usernameInput = document.getElementById('username');
+  const searchBtn = document.getElementById('searchBtn');
+  const statusEl = document.getElementById('status');
+  const profileCard = document.getElementById('profileCard');
+
+  let searchToken = 0; // guards against a slow earlier request overwriting a newer one's results
+
+  searchBtn.addEventListener('click', analyze);
+  usernameInput.addEventListener('keydown', e=>{ if(e.key === 'Enter') analyze(); });
+  usernameInput.addEventListener('input', ()=>{
+    if(usernameInput.placeholder !== 'e.g. torvalds') usernameInput.placeholder = 'e.g. torvalds';
+  });
+
+  // Main lookup flow: validate input -> fetch both endpoints in parallel ->
+  // handle not-found/rate-limit/network errors -> render on success.
+  async function analyze(){
+    const user = usernameInput.value.trim();
+    if(!user){
+      usernameInput.classList.add('shake-input');
+      usernameInput.placeholder = 'Type a username first…';
+      setTimeout(()=>usernameInput.classList.remove('shake-input'), 400);
+      return;
+    }
+
+    const myToken = ++searchToken; // this request's identity
+    statusEl.className = 'status loading';
+    statusEl.textContent = 'fetching /users/' + user + ' …';
+    profileCard.style.display = 'none';
+    searchBtn.disabled = true;
+    searchBtn.style.opacity = '0.6';
+    searchBtn.style.cursor = 'not-allowed';
+
+    try{
+      // Fire both requests at once instead of sequentially, to cut latency in half.
+      const [userRes, reposRes] = await Promise.all([
+        fetch(`https://api.github.com/users/${encodeURIComponent(user)}`),
+        fetch(`https://api.github.com/users/${encodeURIComponent(user)}/repos?per_page=100&sort=updated`)
+      ]);
+
+      // If the user fired off another search while this one was in flight,
+      // discard this stale response instead of overwriting the newer one.
+      if(myToken !== searchToken) return;
+
+      if(userRes.status === 404){
+        statusEl.className = 'status error';
+        statusEl.textContent = 'error: user "' + user + '" not found';
+        return;
+      }
+      if(!userRes.ok){
+        // Covers rate-limiting (403) and any other non-200 response.
+        statusEl.className = 'status error';
+        const remaining = userRes.headers.get('x-ratelimit-remaining');
+        const suffix = remaining === '0' ? ' — rate limit exhausted, try again later' : ' (rate limit may apply)';
+        statusEl.textContent = 'error: GitHub API returned ' + userRes.status + suffix;
+        return;
+      }
+
+      const userData = await userRes.json();
+      // Repos are non-critical -- if that call fails, still show the profile.
+      const repos = reposRes.ok ? await reposRes.json() : [];
+
+      if(myToken !== searchToken) return; // re-check after the extra await above
+      renderProfile(userData, repos);
+      statusEl.textContent = '';
+      statusEl.className = 'status';
+    } catch(err){
+      if(myToken !== searchToken) return;
+      // Typically a network/CORS failure (e.g. opening the file via file:// -
+      // see README for how to serve it locally).
+      statusEl.className = 'status error';
+      statusEl.textContent = 'network error: ' + err.message;
+    } finally{
+      if(myToken === searchToken){
+        searchBtn.disabled = false;
+        searchBtn.style.opacity = '';
+        searchBtn.style.cursor = '';
+      }
+    }
+  }
+
+  // Populates the profile card DOM from the fetched user + repos data.
+  function renderProfile(u, repos){
+    const avatarEl = document.getElementById('avatar');
+    avatarEl.src = u.avatar_url;
+    // If the avatar image fails to load (broken URL, offline, etc.), fall back
+    // to a generated initial-letter placeholder instead of a broken image icon.
+    avatarEl.onerror = function(){
+      this.onerror = null;
+      const initial = (u.name || u.login || '?').trim().charAt(0).toUpperCase();
+      this.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88"><rect width="88" height="88" fill="#141B33"/><text x="50%" y="54%" font-family="monospace" font-size="34" fill="#00FFD6" text-anchor="middle" dominant-baseline="middle">${initial}</text></svg>`
+      );
+    };
+    document.getElementById('name').textContent = u.name || u.login;
+    document.getElementById('login').textContent = '@' + u.login;
+    document.getElementById('bio').textContent = u.bio || '';
+
+    // Optional profile fields -- only render the ones the user actually filled in.
+    const metaBits = [];
+    if(u.location) metaBits.push(`📍 <span>${escapeHtml(u.location)}</span>`);
+    if(u.company) metaBits.push(`🏢 <span>${escapeHtml(u.company)}</span>`);
+    if(u.blog) metaBits.push(`🔗 <span>${escapeHtml(u.blog)}</span>`);
+    metaBits.push(`🗓 joined <span>${new Date(u.created_at).toLocaleDateString(undefined,{year:'numeric',month:'short'})}</span>`);
+    document.getElementById('metaRow').innerHTML = metaBits.join(' &nbsp; ');
+
+    // Stat tiles: repo/follower counts come straight from the API;
+    // total stars is derived by summing stars across all fetched repos.
+    const totalStars = repos.reduce((s,r)=>s+(r.stargazers_count||0),0);
+    const stats = [
+      {n:u.public_repos, l:'Repos'},
+      {n:u.followers, l:'Followers'},
+      {n:u.following, l:'Following'},
+      {n:totalStars, l:'Total Stars'}
+    ];
+    document.getElementById('statGrid').innerHTML = stats.map(s=>`
+      <div class="stat"><div class="n">${s.n ?? 0}</div><div class="l">${s.l}</div></div>
+    `).join('');
+
+    // Top 8 repos by star count.
+    const topRepos = [...repos].sort((a,b)=>b.stargazers_count - a.stargazers_count).slice(0,8);
+    document.getElementById('repoList').innerHTML = topRepos.length ? topRepos.map(r=>`
+      <div class="repo">
+        <div>
+          <a href="${r.html_url}" target="_blank" rel="noopener">${escapeHtml(r.name)}</a>
+          <div class="desc">${escapeHtml(r.description || 'No description')}</div>
+        </div>
+        <div class="stats">
+          ${r.language ? `<span><span class="lang-dot"></span>${escapeHtml(r.language)}</span>` : ''}
+          <span>★ ${r.stargazers_count}</span>
+          <span>⑂ ${r.forks_count}</span>
+        </div>
+      </div>
+    `).join('') : '<div class="repo">No public repositories found.</div>';
+
+    // Language breakdown: count how many repos use each language, take the top 6.
+    const langCount = {};
+    repos.forEach(r=>{ if(r.language) langCount[r.language] = (langCount[r.language]||0)+1; });
+    const sortedLangs = Object.entries(langCount).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const maxLang = Math.max(1, ...sortedLangs.map(l=>l[1]));
+    document.getElementById('langBars').innerHTML = sortedLangs.length ? sortedLangs.map(([lang,count])=>`
+      <div class="lang-row">
+        <span>${escapeHtml(lang)}</span>
+        <div class="lang-track"><div class="lang-fill" data-target="${(count/maxLang*100).toFixed(0)}"></div></div>
+        <span>${count}</span>
+      </div>
+    `).join('') : '<div style="color:var(--dim); font-size:12px;">No language data available.</div>';
+
+    // Trigger the width transition on the next frame -- setting it inline
+    // immediately would skip the CSS transition entirely.
+    requestAnimationFrame(()=>{
+      document.querySelectorAll('.lang-fill').forEach(fill=>{
+        fill.style.width = fill.dataset.target + '%';
+      });
+    });
+
+    profileCard.style.display = 'block';
+  }
+
+  // Prevents XSS from untrusted API text (bios, descriptions, etc.) by
+  // routing it through the DOM's own text escaping instead of raw string interpolation.
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+</script>
+</body>
+</html>
